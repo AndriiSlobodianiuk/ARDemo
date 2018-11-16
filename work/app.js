@@ -17,10 +17,6 @@
  * Container class to manage connecting to the WebXR Device API
  * and handle rendering on every frame.
  */
-
-const MODEL_OBJ_URL = '../assets/ArcticFox_Posed.obj';
-const MODEL_MTL_URL = '../assets/ArcticFox_Posed.mtl';
-const MODEL_SCALE = 0.1;
 class App {
   constructor() {
     this.onXRFrame = this.onXRFrame.bind(this);
@@ -122,8 +118,6 @@ class App {
       preserveDrawingBuffer: true
     });
     this.renderer.autoClear = false;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.gl = this.renderer.getContext();
 
@@ -135,36 +129,18 @@ class App {
     // using our new renderer's context
     this.session.baseLayer = new XRWebGLLayer(this.session, this.gl);
 
-    // Set the three.js renderer to the XRSession framebuffer
-    const framebuffer = this.session.baseLayer;
-    this.renderer.setFramebuffer(framebuffer);
-
     // A THREE.Scene contains the scene graph for all objects in the
     // render scene.
-    // Call our utility which gives us a THREE.Scene populated with
-    // cubes everywhere.
+    this.scene = new THREE.Scene();
 
-    // this.scene = DemoUtils.createCubeScene();
-    // this.scene = new THREE.Scene();
-    this.scene = DemoUtils.createLitScene();
-
-    // We no longer need our cube model.
-    // Sorry, cube!
-    /*
     const geometry = new THREE.BoxBufferGeometry(0.5, 0.5, 0.5);
-    const material = new THREE.MeshBasicMaterial();
+    const material = new THREE.MeshNormalMaterial();
+
+    // Translate the cube up 0.25m so that the origin of the cube
+    // is on its bottom face
     geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 0.25, 0));
+
     this.model = new THREE.Mesh(geometry, material);
-    */
-
-    DemoUtils.loadModel(MODEL_OBJ_URL, MODEL_MTL_URL).then(model => {
-      this.model = model;
-
-      // Set all meshes contained in the model to cast a shadow
-      this.model.children.forEach(mesh => (mesh.castShadow = true));
-
-      this.model.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-    });
 
     // We'll update the camera matrices directly from API, so
     // disable matrix auto updates so three.js doesn't attempt
@@ -172,47 +148,16 @@ class App {
     this.camera = new THREE.PerspectiveCamera();
     this.camera.matrixAutoUpdate = false;
 
+    // Add a Reticle object, which will help us find surfaces by drawing
+    // a ring shape onto found surfaces. See source code
+    // of Reticle in shared/utils.js for more details.
     this.reticle = new Reticle(this.session, this.camera);
     this.scene.add(this.reticle);
 
-    window.addEventListener('click', this.onClick);
-
     this.frameOfRef = await this.session.requestFrameOfReference('eye-level');
     this.session.requestAnimationFrame(this.onXRFrame);
-  }
 
-  async onClick(e) {
-    if (!this.model) {
-      return;
-    }
-    const x = 0;
-    const y = 0;
-
-    this.raycaster = this.raycaster || new THREE.Raycaster();
-    this.raycaster.setFromCamera({ x, y }, this.camera);
-    const ray = this.raycaster.ray;
-
-    const origin = new Float32Array(ray.origin.toArray());
-    const direction = new Float32Array(ray.direction.toArray());
-    const hits = await this.session.requestHitTest(
-      origin,
-      direction,
-      this.frameOfRef
-    );
-
-    if (hits.length) {
-      const hit = hits[0];
-      const hitMatrix = new THREE.Matrix4().fromArray(hit.hitMatrix);
-
-      this.model.position.setFromMatrixPosition(hitMatrix);
-
-      DemoUtils.lookAtOnY(this.model, this.camera);
-
-      const shadowMesh = this.scene.children.find(c => c.name === 'shadowMesh');
-      shadowMesh.position.y = this.model.position.y;
-
-      this.scene.add(this.model);
-    }
+    window.addEventListener('click', this.onClick);
   }
 
   /**
@@ -223,7 +168,11 @@ class App {
     let session = frame.session;
     let pose = frame.getDevicePose(this.frameOfRef);
 
+    // Update the reticle's position
     this.reticle.update(this.frameOfRef);
+
+    // If the reticle has found a hit (is visible) and we have
+    // not yet marked our app as stabilized, do so
     if (this.reticle.visible && !this.stabilized) {
       this.stabilized = true;
       document.body.classList.add('stabilized');
@@ -258,6 +207,62 @@ class App {
         // Render our scene with our THREE.WebGLRenderer
         this.renderer.render(this.scene, this.camera);
       }
+    }
+  }
+
+  /**
+   * This method is called when tapping on the page once an XRSession
+   * has started. We're going to be firing a ray from the center of
+   * the screen, and if a hit is found, use it to place our object
+   * at the point of collision.
+   */
+  async onClick(e) {
+    // The requestHitTest function takes an x and y coordinate in
+    // Normalized Device Coordinates, where the upper left is (-1, 1)
+    // and the bottom right is (1, -1). This makes (0, 0) our center.
+    const x = 0;
+    const y = 0;
+
+    // Create a THREE.Raycaster if one doesn't already exist,
+    // and use it to generate an origin and direction from
+    // our camera (device) using the tap coordinates.
+    // Learn more about THREE.Raycaster:
+    // https://threejs.org/docs/#api/core/Raycaster
+    this.raycaster = this.raycaster || new THREE.Raycaster();
+    this.raycaster.setFromCamera({ x, y }, this.camera);
+    const ray = this.raycaster.ray;
+
+    // Fire the hit test to see if our ray collides with a real
+    // surface. Note that we must turn our THREE.Vector3 origin and
+    // direction into an array of x, y, and z values. The proposal
+    // for `XRSession.prototype.requestHitTest` can be found here:
+    // https://github.com/immersive-web/hit-test
+    const origin = new Float32Array(ray.origin.toArray());
+    const direction = new Float32Array(ray.direction.toArray());
+    const hits = await this.session.requestHitTest(
+      origin,
+      direction,
+      this.frameOfRef
+    );
+
+    // If we found at least one hit...
+    if (hits.length) {
+      // We can have multiple collisions per hit test. Let's just take the
+      // first hit, the nearest, for now.
+      const hit = hits[0];
+
+      // Our XRHitResult object has one property, `hitMatrix`, a
+      // Float32Array(16) representing a 4x4 Matrix encoding position where
+      // the ray hit an object, and the orientation has a Y-axis that corresponds
+      // with the normal of the object at that location.
+      // Turn this matrix into a THREE.Matrix4().
+      const hitMatrix = new THREE.Matrix4().fromArray(hit.hitMatrix);
+
+      // Now apply the position from the hitMatrix onto our model.
+      this.model.position.setFromMatrixPosition(hitMatrix);
+
+      // Ensure our model has been added to the scene.
+      this.scene.add(this.model);
     }
   }
 }

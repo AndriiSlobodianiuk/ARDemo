@@ -13,6 +13,10 @@
  * limitations under the License.
  */
 
+const MODEL_OBJ_URL = '../assets/ArcticFox_Posed.obj';
+const MODEL_MTL_URL = '../assets/ArcticFox_Posed.mtl';
+const MODEL_SCALE = 0.1;
+
 /**
  * Container class to manage connecting to the WebXR Device API
  * and handle rendering on every frame.
@@ -130,17 +134,21 @@ class App {
     this.session.baseLayer = new XRWebGLLayer(this.session, this.gl);
 
     // A THREE.Scene contains the scene graph for all objects in the
-    // render scene.
-    this.scene = new THREE.Scene();
+    // render scene. Call our utility which gives us a THREE.Scene
+    // with a few lights and meshes already in the scene.
+    this.scene = DemoUtils.createLitScene();
 
-    const geometry = new THREE.BoxBufferGeometry(0.5, 0.5, 0.5);
-    const material = new THREE.MeshNormalMaterial();
+    // Use the DemoUtils.loadModel to load our OBJ and MTL. The promise
+    // resolves to a THREE.Group containing our mesh information.
+    // Dont await this promise, as we want to start the rendering
+    // process before this finishes.
+    DemoUtils.loadModel(MODEL_OBJ_URL, MODEL_MTL_URL).then(model => {
+      this.model = model;
 
-    // Translate the cube up 0.25m so that the origin of the cube
-    // is on its bottom face
-    geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 0.25, 0));
-
-    this.model = new THREE.Mesh(geometry, material);
+      // Every model is different -- you may have to adjust the scale
+      // of a model depending on the use.
+      this.model.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+    });
 
     // We'll update the camera matrices directly from API, so
     // disable matrix auto updates so three.js doesn't attempt
@@ -217,6 +225,12 @@ class App {
    * at the point of collision.
    */
   async onClick(e) {
+    // If our model is not yet loaded, abort
+    if (!this.model) {
+      return;
+    }
+
+    // We're going to be firing a ray from the center of the screen.
     // The requestHitTest function takes an x and y coordinate in
     // Normalized Device Coordinates, where the upper left is (-1, 1)
     // and the bottom right is (1, -1). This makes (0, 0) our center.
@@ -260,6 +274,11 @@ class App {
 
       // Now apply the position from the hitMatrix onto our model.
       this.model.position.setFromMatrixPosition(hitMatrix);
+
+      // Rather than using the rotation encoded by the `modelMatrix`,
+      // rotate the model to face the camera. Use this utility to
+      // rotate the model only on the Y axis.
+      DemoUtils.lookAtOnY(this.model, this.camera);
 
       // Ensure our model has been added to the scene.
       this.scene.add(this.model);

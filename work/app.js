@@ -21,6 +21,7 @@ class App {
   constructor() {
     this.onXRFrame = this.onXRFrame.bind(this);
     this.onEnterAR = this.onEnterAR.bind(this);
+    this.onClick = this.onClick.bind(this);
 
     this.init();
   }
@@ -54,7 +55,9 @@ class App {
     // We found an XRDevice! Bind a click listener on our "Enter AR" button
     // since the spec requires calling `device.requestSession()` within a
     // user gesture.
-    document.querySelector('#enter-ar').addEventListener('click', this.onEnterAR);
+    document
+      .querySelector('#enter-ar')
+      .addEventListener('click', this.onEnterAR);
   }
 
   /**
@@ -75,13 +78,13 @@ class App {
       // a user gesture, hence this function being a click handler.
       const session = await this.device.requestSession({
         outputContext: ctx,
-        environmentIntegration: true,
+        environmentIntegration: true
       });
 
       // If `requestSession` is successful, add the canvas to the
       // DOM since we know it will now be used.
       document.body.appendChild(outputCanvas);
-      this.onSessionStarted(session)
+      this.onSessionStarted(session);
     } catch (e) {
       // If `requestSession` fails, the canvas is not added, and we
       // call our function for unsupported browsers.
@@ -112,7 +115,7 @@ class App {
     // the WebGLRenderer, which handles rendering to our session's base layer.
     this.renderer = new THREE.WebGLRenderer({
       alpha: true,
-      preserveDrawingBuffer: true,
+      preserveDrawingBuffer: true
     });
     this.renderer.autoClear = false;
 
@@ -130,7 +133,14 @@ class App {
     // render scene.
     // Call our utility which gives us a THREE.Scene populated with
     // cubes everywhere.
-    this.scene = DemoUtils.createCubeScene();
+
+    // this.scene = DemoUtils.createCubeScene();
+    this.scene = new THREE.Scene();
+
+    const geometry = new THREE.BoxBufferGeometry(0.5, 0.5, 0.5);
+    const material = new THREE.MeshNormalMaterial();
+    geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 0.25, 0));
+    this.model = new THREE.Mesh(geometry, material);
 
     // We'll update the camera matrices directly from API, so
     // disable matrix auto updates so three.js doesn't attempt
@@ -138,8 +148,39 @@ class App {
     this.camera = new THREE.PerspectiveCamera();
     this.camera.matrixAutoUpdate = false;
 
+    this.reticle = new Reticle(this.session, this.camera);
+    this.scene.add(this.reticle);
+
+    window.addEventListener('click', this.onClick);
+
     this.frameOfRef = await this.session.requestFrameOfReference('eye-level');
     this.session.requestAnimationFrame(this.onXRFrame);
+  }
+
+  async onClick(e) {
+    const x = 0;
+    const y = 0;
+
+    this.raycaster = this.raycaster || new THREE.Raycaster();
+    this.raycaster.setFromCamera({ x, y }, this.camera);
+    const ray = this.raycaster.ray;
+
+    const origin = new Float32Array(ray.origin.toArray());
+    const direction = new Float32Array(ray.direction.toArray());
+    const hits = await this.session.requestHitTest(
+      origin,
+      direction,
+      this.frameOfRef
+    );
+
+    if (hits.length) {
+      const hit = hits[0];
+      const hitMatrix = new THREE.Matrix4().fromArray(hit.hitMatrix);
+
+      this.model.position.setFromMatrixPosition(hitMatrix);
+
+      this.scene.add(this.model);
+    }
   }
 
   /**
@@ -150,11 +191,20 @@ class App {
     let session = frame.session;
     let pose = frame.getDevicePose(this.frameOfRef);
 
+    this.reticle.update(this.frameOfRef);
+    if (this.reticle.visible && !this.stabilized) {
+      this.stabilized = true;
+      document.body.classList.add('stabilized');
+    }
+
     // Queue up the next frame
     session.requestAnimationFrame(this.onXRFrame);
 
     // Bind the framebuffer to our baseLayer's framebuffer
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.session.baseLayer.framebuffer);
+    this.gl.bindFramebuffer(
+      this.gl.FRAMEBUFFER,
+      this.session.baseLayer.framebuffer
+    );
 
     if (pose) {
       // Our XRFrame has an array of views. In the VR case, we'll have
@@ -167,7 +217,9 @@ class App {
         // Set the view matrix and projection matrix from XRDevicePose
         // and XRView onto our THREE.Camera.
         this.camera.projectionMatrix.fromArray(view.projectionMatrix);
-        const viewMatrix = new THREE.Matrix4().fromArray(pose.getViewMatrix(view));
+        const viewMatrix = new THREE.Matrix4().fromArray(
+          pose.getViewMatrix(view)
+        );
         this.camera.matrix.getInverse(viewMatrix);
         this.camera.updateMatrixWorld(true);
 
@@ -176,6 +228,6 @@ class App {
       }
     }
   }
-};
+}
 
 window.app = new App();

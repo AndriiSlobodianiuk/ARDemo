@@ -14,7 +14,7 @@
  */
 
 const MODEL_OBJ_URL = '../assets/Darius.obj';
-const MODEL_MTL_URL = '../assets/Darius_color.tga';
+// const MODEL_MTL_URL = '../assets/girl_complete_03.mtl';
 const MODEL_SCALE = 0.1;
 
 /**
@@ -142,7 +142,10 @@ class App {
     // resolves to a THREE.Group containing our mesh information.
     // Dont await this promise, as we want to start the rendering
     // process before this finishes.
-    DemoUtils.loadModel(MODEL_OBJ_URL, MODEL_MTL_URL).then(model => {
+    DemoUtils.loadModel(
+      MODEL_OBJ_URL
+      // , MODEL_MTL_URL
+    ).then(model => {
       this.model = model;
 
       // Every model is different -- you may have to adjust the scale

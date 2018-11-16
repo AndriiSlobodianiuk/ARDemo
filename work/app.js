@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-const MODEL_OBJ_URL = '../assets/girl_complete_03.obj';
-const MODEL_MTL_URL = '../assets/girl_complete_03.mtl';
+const MODEL_OBJ_URL = '../assets/Darius.obj';
+const MODEL_MTL_URL = '../assets/Darius_color.tga';
 const MODEL_SCALE = 0.1;
 
 /**

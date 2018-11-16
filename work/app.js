@@ -122,6 +122,8 @@ class App {
       preserveDrawingBuffer: true
     });
     this.renderer.autoClear = false;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.gl = this.renderer.getContext();
 
@@ -132,6 +134,10 @@ class App {
     // Set our session's baseLayer to an XRWebGLLayer
     // using our new renderer's context
     this.session.baseLayer = new XRWebGLLayer(this.session, this.gl);
+
+    // Set the three.js renderer to the XRSession framebuffer
+    const framebuffer = this.session.baseLayer;
+    this.renderer.setFramebuffer(framebuffer);
 
     // A THREE.Scene contains the scene graph for all objects in the
     // render scene.
@@ -153,6 +159,10 @@ class App {
 
     DemoUtils.loadModel(MODEL_OBJ_URL, MODEL_MTL_URL).then(model => {
       this.model = model;
+
+      // Set all meshes contained in the model to cast a shadow
+      this.model.children.forEach(mesh => (mesh.castShadow = true));
+
       this.model.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
     });
 
@@ -197,6 +207,9 @@ class App {
       this.model.position.setFromMatrixPosition(hitMatrix);
 
       DemoUtils.lookAtOnY(this.model, this.camera);
+
+      const shadowMesh = this.scene.children.find(c => c.name === 'shadowMesh');
+      shadowMesh.position.y = this.model.position.y;
 
       this.scene.add(this.model);
     }

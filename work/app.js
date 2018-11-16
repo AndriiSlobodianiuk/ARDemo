@@ -17,6 +17,10 @@
  * Container class to manage connecting to the WebXR Device API
  * and handle rendering on every frame.
  */
+
+const MODEL_OBJ_URL = '../assets/ArcticFox_Posed.obj';
+const MODEL_MTL_URL = '../assets/ArcticFox_Posed.mtl';
+const MODEL_SCALE = 0.1;
 class App {
   constructor() {
     this.onXRFrame = this.onXRFrame.bind(this);
@@ -135,12 +139,22 @@ class App {
     // cubes everywhere.
 
     // this.scene = DemoUtils.createCubeScene();
-    this.scene = new THREE.Scene();
+    // this.scene = new THREE.Scene();
+    this.scene = DemoUtils.createLitScene();
 
+    // We no longer need our cube model.
+    // Sorry, cube!
+    /*
     const geometry = new THREE.BoxBufferGeometry(0.5, 0.5, 0.5);
-    const material = new THREE.MeshNormalMaterial();
+    const material = new THREE.MeshBasicMaterial();
     geometry.applyMatrix(new THREE.Matrix4().makeTranslation(0, 0.25, 0));
     this.model = new THREE.Mesh(geometry, material);
+    */
+
+    DemoUtils.loadModel(MODEL_OBJ_URL, MODEL_MTL_URL).then(model => {
+      this.model = model;
+      this.model.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+    });
 
     // We'll update the camera matrices directly from API, so
     // disable matrix auto updates so three.js doesn't attempt
@@ -158,6 +172,9 @@ class App {
   }
 
   async onClick(e) {
+    if (!this.model) {
+      return;
+    }
     const x = 0;
     const y = 0;
 
@@ -178,6 +195,8 @@ class App {
       const hitMatrix = new THREE.Matrix4().fromArray(hit.hitMatrix);
 
       this.model.position.setFromMatrixPosition(hitMatrix);
+
+      DemoUtils.lookAtOnY(this.model, this.camera);
 
       this.scene.add(this.model);
     }
